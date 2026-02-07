@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Chat Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="./img/icons8-whatsapp-48.png">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+</head>
+
+<body class="dark-theme">
+    <!-- UPLOAD MODAL -->
+    <div class="upload-modal" id="uploadModal">
+        <div class="upload-modal-content">
+            <!-- Close button - hidden on first open, shown when reopening -->
+            <button class="modal-close-btn hidden" id="modalCloseBtn" title="Close">
+                <span class="material-icons">close</span>
+            </button>
+
+            <div class="upload-modal-header">
+                <img src="./img/icons8-whatsapp-48.png" alt="WhatsApp" class="modal-logo">
+                <h2>WhatsApp Chat Viewer</h2>
+                <p>Upload your exported WhatsApp chat (.txt) to view</p>
+            </div>
+
+            <div class="upload-zone" id="uploadZone">
+                <img src="./img/icons8-attach-100.png" alt="Upload" class="upload-icon">
+                <h3>Drop your chat file here</h3>
+                <p>or click to browse</p>
+                <span class="file-name" id="fileName"></span>
+            </div>
+
+            <!-- Dynamic options populated after parsing -->
+            <div class="upload-options" id="uploadOptions">
+                <div class="option-row">
+                    <label>
+                        <span class="material-icons-outlined">person</span>
+                        Your identity in chat
+                    </label>
+                    <select id="userSelect" disabled>
+                        <option value="">Upload a chat first...</option>
+                    </select>
+                </div>
+
+                <div class="option-row" id="avatarOptionRow" style="display: none;">
+                    <label id="avatarLabel">
+                        <span class="material-icons-outlined">account_circle</span>
+                        <span id="avatarLabelText">Avatar (optional)</span>
+                    </label>
+                    <input type="file" id="avatarUpload" accept="image/*">
+                    <div class="avatar-preview" id="avatarPreview"></div>
+                </div>
+
+                <div class="option-row">
+                    <label>
+                        <span class="material-icons-outlined">wallpaper</span>
+                        Chat Background (optional)
+                    </label>
+                    <input type="file" id="bgUpload" accept="image/*">
+                    <div class="bg-preview" id="bgPreview"></div>
+                </div>
+            </div>
+
+            <button class="load-btn" id="loadChatBtn" disabled>
+                <span class="material-icons">chat</span>
+                Load Chat
+            </button>
+
+            <p class="modal-footer">Your data stays in your browser. Nothing is uploaded.</p>
+        </div>
+    </div>
+
+    <!-- REACTION PICKER -->
+    <div class="reaction-picker hidden" id="reactionPicker">
+        <span class="reaction-emoji" data-emoji="👍">👍</span>
+        <span class="reaction-emoji" data-emoji="❤️">❤️</span>
+        <span class="reaction-emoji" data-emoji="😂">😂</span>
+        <span class="reaction-emoji" data-emoji="😮">😮</span>
+        <span class="reaction-emoji" data-emoji="😢">😢</span>
+        <span class="reaction-emoji" data-emoji="🙏">🙏</span>
+    </div>
+
+    <!-- DESKTOP VIEW -->
+    <div class="container desktop-view" id="desktopApp" style="display: none;">
+        <div class="whatsapp">
+            <!-- CONTACTS SIDEBAR -->
+            <div class="contacts">
+                <div class="connav navs">
+                    <div class="profile" id="myProfileSection">
+                        <img src="./img/icons8-account-96.png" alt="" id="myProfileImg">
+                    </div>
+                    <div class="tools">
+                        <div class="tool theme-toggle" id="themeToggleDesktop" title="Toggle theme">
+                            <span class="material-icons-outlined">light_mode</span>
+                        </div>
+                        <div class="tool edit-toggle" id="sidebarEditToggle" title="Edit chats">
+                            <span class="material-icons-outlined">edit</span>
+                        </div>
+                        <div class="tool" id="addChatBtn" title="Add new chat">
+                            <span class="material-icons-outlined">add_comment</span>
+                        </div>
+                        <div class="tool">
+                            <span class="material-icons-outlined">more_vert</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="search">
+                    <div class="searchBar">
+                        <span class="material-icons-outlined search-icon">search</span>
+                        <input type="text" id="searchInput" placeholder="Search or start new chat">
+                    </div>
+                </div>
+                <div class="usersContainer">
+                    <div class="users" id="chatList">
+                        <!-- Chat list populated dynamically -->
+                    </div>
+                    <div class="bottomcon">
+                        <p>Your personal messages are <a href="#">end-to-end encrypted</a></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONVERSATION AREA -->
+            <div class="conversation">
+                <div class="convenav navs">
+                    <div class="conveuser">
+                        <div class="profile">
+                            <img id="chatHeaderImg" src="./img/icons8-account-96.png" alt="">
+                        </div>
+                        <div class="profileInformation">
+                            <h4 id="chatHeaderName">Select a chat</h4>
+                            <p id="chatHeaderStatus">Click on a chat to view messages</p>
+                        </div>
+                    </div>
+                    <div class="tools">
+                        <div class="tool" id="chatSearchBtn" title="Search messages">
+                            <span class="material-icons-outlined">search</span>
+                        </div>
+                        <div class="tool edit-toggle" id="chatEditToggle" title="Edit chat">
+                            <span class="material-icons-outlined">edit</span>
+                        </div>
+                        <div class="tool">
+                            <span class="material-icons-outlined">more_vert</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Search Overlay -->
+                <div class="chat-search-overlay" id="chatSearchOverlay">
+                    <div class="chat-search-header">
+                        <span class="material-icons back-btn" id="closeChatSearch">arrow_back</span>
+                        <input type="text" id="chatSearchInput" placeholder="Search messages...">
+                    </div>
+                    <div class="chat-search-results" id="chatSearchResults">
+                        <!-- Search results populated here -->
+                    </div>
+                </div>
+
+                <div class="convemessages" id="messagesArea">
+                    <div class="empty-state" id="emptyState">
+                        <img src="./img/icons8-whatsapp-48.png" alt="">
+                        <h3>WhatsApp Web</h3>
+                        <p>Send and receive messages without keeping your phone online.</p>
+                    </div>
+                </div>
+                <div class="convebottom">
+                    <!-- Emoji Picker Popup -->
+                    <div class="emoji-picker-popup" id="inputEmojiPicker">
+                        <div class="emoji-picker-grid" id="emojiGrid">
+                            <span data-emoji="😀">😀</span><span data-emoji="😃">😃</span><span
+                                data-emoji="😄">😄</span><span data-emoji="😁">😁</span>
+                            <span data-emoji="😆">😆</span><span data-emoji="😅">😅</span><span
+                                data-emoji="🤣">🤣</span><span data-emoji="😂">😂</span>
+                            <span data-emoji="🙂">🙂</span><span data-emoji="😊">😊</span><span
+                                data-emoji="😇">😇</span><span data-emoji="🥰">🥰</span>
+                            <span data-emoji="😍">😍</span><span data-emoji="🤩">🤩</span><span
+                                data-emoji="😘">😘</span><span data-emoji="😗">😗</span>
+                            <span data-emoji="😜">😜</span><span data-emoji="😝">😝</span><span
+                                data-emoji="😛">😛</span><span data-emoji="🤑">🤑</span>
+                            <span data-emoji="🤗">🤗</span><span data-emoji="🤭">🤭</span><span
+                                data-emoji="🤫">🤫</span><span data-emoji="🤔">🤔</span>
+                            <span data-emoji="👍">👍</span><span data-emoji="👎">👎</span><span
+                                data-emoji="👏">👏</span><span data-emoji="🙌">🙌</span>
+                            <span data-emoji="❤️">❤️</span><span data-emoji="🔥">🔥</span><span
+                                data-emoji="✨">✨</span><span data-emoji="🎉">🎉</span>
+                        </div>
+                    </div>
+                    <div class="tools">
+                        <div class="tool" id="emojiToggleBtn" title="Emoji">
+                            <img src="./img/icons8-happy-96.png" alt="Emoji">
+                        </div>
+                        <div class="tool" id="attachMenuBtn" title="Attach / Edit Tools">
+                            <img src="./img/icons8-attach-100.png" alt="Attach">
+                        </div>
+                    </div>
+                    <!-- Attach/Edit Menu Popup -->
+                    <div class="attach-menu" id="attachMenu">
+                        <div class="attach-menu-item" id="attachEditMsg">
+                            <span class="material-icons">edit</span> Edit Selected Message
+                        </div>
+                        <div class="attach-menu-item" id="attachSwapSide">
+                            <span class="material-icons">swap_horiz</span> Swap Side
+                        </div>
+                        <div class="attach-menu-item" id="attachEditTime">
+                            <span class="material-icons">schedule</span> Edit Time
+                        </div>
+                        <div class="attach-menu-item" id="attachEditDate">
+                            <span class="material-icons">event</span> Edit Date
+                        </div>
+                        <div class="attach-menu-item delete" id="attachDeleteMsg">
+                            <span class="material-icons">delete</span> Delete Message
+                        </div>
+                    </div>
+                    <input type="text" id="messageInput" placeholder="Type a message">
+                    <button class="send-btn" id="sendBtn" title="Send">
+                        <span class="material-icons">send</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Editor Modal -->
+    <div class="message-editor-modal hidden" id="messageEditorModal">
+        <div class="message-editor-content">
+            <div class="message-editor-header">
+                <h3 id="editorTitle">Add Message</h3>
+                <button class="editor-close-btn" id="editorCloseBtn">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            <div class="message-editor-body">
+                <div class="editor-field">
+                    <label>Message Type</label>
+                    <select id="editorMsgType">
+                        <option value="sender">Outgoing (You - Green)</option>
+                        <option value="receiver">Incoming (Them - Dark)</option>
+                        <option value="system">System Message</option>
+                        <option value="date">Date Divider</option>
+                    </select>
+                </div>
+                <div class="editor-field" id="msgTextField">
+                    <label>Message Text</label>
+                    <textarea id="editorMsgText" placeholder="Type your message..."></textarea>
+                </div>
+                <div class="editor-field editor-row">
+                    <div>
+                        <label>Date</label>
+                        <input type="text" id="editorMsgDate" placeholder="Feb 5, 2026">
+                    </div>
+                    <div>
+                        <label>Time</label>
+                        <input type="text" id="editorMsgTime" placeholder="2:30 PM">
+                    </div>
+                </div>
+                <div class="editor-field" id="statusField">
+                    <label>Delivery Status</label>
+                    <div class="status-options">
+                        <label class="status-option">
+                            <input type="radio" name="msgStatus" value="sent">
+                            <span class="material-icons">check</span> Sent
+                        </label>
+                        <label class="status-option">
+                            <input type="radio" name="msgStatus" value="delivered">
+                            <span class="material-icons">done_all</span> Delivered
+                        </label>
+                        <label class="status-option">
+                            <input type="radio" name="msgStatus" value="read" checked>
+                            <span class="material-icons" style="color:#53bdeb">done_all</span> Read
+                        </label>
+                    </div>
+                    <div class="message-editor-footer">
+                        <button class="editor-cancel-btn" id="editorCancelBtn">Cancel</button>
+                        <button class="editor-save-btn" id="editorSaveBtn">Add Message</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Container Editor Modal -->
+            <div class="user-editor-modal hidden" id="userEditorModal">
+                <div class="message-editor-content">
+                    <div class="message-editor-header">
+                        <h3>Edit Chat Info</h3>
+                        <button class="editor-close-btn" id="userEditorCloseBtn">
+                            <span class="material-icons">close</span>
+                        </button>
+                    </div>
+                    <div class="message-editor-body">
+                        <div class="editor-field">
+                            <label>Chat Name</label>
+                            <input type="text" id="userEditorName" placeholder="Enter chat name">
+                        </div>
+                        <div class="editor-field">
+                            <label>Last Message Preview</label>
+                            <input type="text" id="userEditorLastMsg" placeholder="Enter last message preview">
+                        </div>
+                        <div class="editor-field">
+                            <label>Avatar Image URL (optional)</label>
+                            <input type="text" id="userEditorAvatar" placeholder="Enter image URL or leave blank">
+                        </div>
+                    </div>
+                    <div class="message-editor-footer">
+                        <button class="editor-cancel-btn" id="userEditorCancelBtn">Cancel</button>
+                        <button class="editor-save-btn" id="userEditorSaveBtn">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mobile Emoji Picker Popup -->
+            <div class="emoji-picker-popup mobile-emoji-picker" id="mobileEmojiPicker">
+                <div class="emoji-grid">
+                    <span data-emoji="😀">😀</span><span data-emoji="😃">😃</span><span data-emoji="😄">😄</span><span
+                        data-emoji="😁">😁</span>
+                    <span data-emoji="😆">😆</span><span data-emoji="😅">😅</span><span data-emoji="🤣">🤣</span><span
+                        data-emoji="😂">😂</span>
+                    <span data-emoji="🙂">🙂</span><span data-emoji="😊">😊</span><span data-emoji="😇">😇</span><span
+                        data-emoji="🥰">🥰</span>
+                    <span data-emoji="😍">😍</span><span data-emoji="🤩">🤩</span><span data-emoji="😘">😘</span><span
+                        data-emoji="😗">😗</span>
+                    <span data-emoji="👍">👍</span><span data-emoji="👎">👎</span><span data-emoji="👏">👏</span><span
+                        data-emoji="🙌">🙌</span>
+                    <span data-emoji="❤️">❤️</span><span data-emoji="🔥">🔥</span><span data-emoji="✨">✨</span><span
+                        data-emoji="🎉">🎉</span>
+                </div>
+            </div>
+
+            <!-- MOBILE VIEW -->
+            <div class="mobile-view" id="mobileApp" style="display: none;">
+                <!-- Mobile Chat List Screen -->
+                <div class="mobile-screen" id="mobileListScreen">
+                    <header class="mobile-header">
+                        <h1>WhatsApp</h1>
+                        <div class="mobile-header-icons">
+                            <span class="material-icons-outlined theme-toggle" id="themeToggleMobile">light_mode</span>
+                            <span class="material-icons-outlined" id="mobileAddChat">add_comment</span>
+                            <span class="material-icons-outlined">more_vert</span>
+                        </div>
+                    </header>
+                    <div class="mobile-search">
+                        <div class="mobile-search-bar">
+                            <span class="material-icons-outlined">search</span>
+                            <input type="text" id="mobileSearchInput" placeholder="Ask Meta AI or Search">
+                        </div>
+                    </div>
+                    <div class="mobile-filters">
+                        <button class="filter-chip active">All</button>
+                        <button class="filter-chip">Unread</button>
+                        <button class="filter-chip">Favorites</button>
+                        <button class="filter-chip">Groups</button>
+                    </div>
+                    <div class="mobile-chat-list" id="mobileChatList">
+                        <!-- Mobile chat list populated dynamically -->
+                    </div>
+                    <nav class="mobile-nav">
+                        <div class="nav-item active" data-tab="chats">
+                            <span class="material-icons">chat</span>
+                            <span>Chats</span>
+                        </div>
+                        <div class="nav-item" data-tab="updates">
+                            <span class="material-icons-outlined">update</span>
+                            <span>Updates</span>
+                        </div>
+                        <div class="nav-item" data-tab="communities">
+                            <span class="material-icons-outlined">groups</span>
+                            <span>Communities</span>
+                        </div>
+                        <div class="nav-item" data-tab="calls">
+                            <span class="material-icons-outlined">call</span>
+                            <span>Calls</span>
+                        </div>
+                    </nav>
+                </div>
+
+                <!-- Updates Screen -->
+                <div class="mobile-screen mobile-updates-screen hidden" id="mobileUpdatesScreen">
+                    <header class="mobile-header">
+                        <h1>Updates</h1>
+                        <div class="mobile-header-icons">
+                            <span class="material-icons-outlined edit-toggle" id="mobileUpdatesEdit">edit</span>
+                            <span class="material-icons-outlined">more_vert</span>
+                        </div>
+                    </header>
+                    <div class="updates-content" id="updatesContent">
+                        <div class="status-section">
+                            <h4>Status</h4>
+                            <div class="status-item my-status">
+                                <div class="status-avatar">+</div>
+                                <div class="status-info">
+                                    <span>My Status</span>
+                                    <small>Tap to add status update</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="channels-section">
+                            <h4>Channels</h4>
+                            <p class="empty-text">Find channels to follow</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Communities Screen -->
+                <div class="mobile-screen mobile-communities-screen hidden" id="mobileCommunitiesScreen">
+                    <header class="mobile-header">
+                        <h1>Communities</h1>
+                        <div class="mobile-header-icons">
+                            <span class="material-icons-outlined edit-toggle" id="mobileCommunitiesEdit">edit</span>
+                            <span class="material-icons-outlined">more_vert</span>
+                        </div>
+                    </header>
+                    <div class="communities-content" id="communitiesContent">
+                        <div class="empty-community">
+                            <span class="material-icons">groups</span>
+                            <h3>Stay connected with a community</h3>
+                            <p>Communities bring members together in topic-based groups.</p>
+                            <button class="create-community-btn">Start your community</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calls Screen -->
+                <div class="mobile-screen mobile-calls-screen hidden" id="mobileCallsScreen">
+                    <header class="mobile-header">
+                        <h1>Calls</h1>
+                        <div class="mobile-header-icons">
+                            <span class="material-icons-outlined edit-toggle" id="mobileCallsEdit">edit</span>
+                            <span class="material-icons-outlined">add_call</span>
+                        </div>
+                    </header>
+                    <div class="calls-content" id="callsContent">
+                        <div class="calls-list" id="callsList">
+                            <p class="empty-text">No recent calls</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mobile Chat Screen -->
+                <div class="mobile-screen mobile-chat-screen hidden" id="mobileChatScreen">
+                    <header class="mobile-chat-header">
+                        <span class="material-icons back-btn" id="mobileBackBtn">arrow_back</span>
+                        <div class="chat-user-info" id="mobileChatUserInfo">
+                            <img src="./img/icons8-account-96.png" alt="" id="mobileChatAvatar">
+                            <div>
+                                <h2 id="mobileChatName">Chat Name</h2>
+                            </div>
+                        </div>
+                        <div class="mobile-chat-icons">
+                            <span class="material-icons">videocam</span>
+                            <span class="material-icons">call</span>
+                            <span class="material-icons edit-toggle" id="mobileChatEditToggle">edit</span>
+                            <span class="material-icons">more_vert</span>
+                        </div>
+                    </header>
+                    <main class="mobile-messages" id="mobileMessagesArea">
+                        <!-- Messages populated dynamically -->
+                    </main>
+                    <footer class="mobile-input-bar">
+                        <div class="mobile-input-container">
+                            <span class="material-icons" id="mobileEmojiBtn">sentiment_satisfied_alt</span>
+                            <input type="text" id="mobileMessageInput" placeholder="Message">
+                            <span class="material-icons rotate-45" id="mobileAttachBtn">attach_file</span>
+                            <span class="material-icons">photo_camera</span>
+                        </div>
+                        <button class="mobile-send-btn" id="mobileSendBtn">
+                            <span class="material-icons">send</span>
+                        </button>
+                    </footer>
+                </div>
+            </div>
+
+            <!-- Hidden file input -->
+            <input type="file" id="chatFileInput" accept=".txt" style="display: none;">
+
+            <script src="script.js"></script>
+</body>
+
+</html>
