@@ -143,6 +143,16 @@ const dom = {
     mobileCommunitiesScreen: $('mobileCommunitiesScreen'),
     mobileCallsScreen: $('mobileCallsScreen'),
 
+    // Help Modal
+    helpModal: $('helpModal'),
+    helpCloseBtn: $('helpCloseBtn'),
+    helpBtnDesktop: $('helpBtnDesktop'),
+    helpBtnMobile: $('helpBtnMobile'),
+
+    // Avatar File Upload
+    userEditorAvatarFile: $('userEditorAvatarFile'),
+    userAvatarPreview: $('userAvatarPreview'),
+
     // Reaction Picker
     reactionPicker: $('reactionPicker'),
 };
@@ -150,9 +160,13 @@ const dom = {
 // =============================================
 // INITIALIZATION
 // =============================================
-document.addEventListener('DOMContentLoaded', () => {
-    loadFromStorage();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load settings first (sync) to apply theme immediately
+    loadSettingsFromStorage();
     applyTheme();
+
+    // Load chats (async from IndexedDB)
+    await loadFromStorage();
 
     if (state.chats.length === 0) {
         state.isFirstOpen = true;
@@ -172,7 +186,126 @@ document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
 });
 
-function loadFromStorage() {
+// IndexedDB wrapper for large data storage
+const DB_NAME = 'WhatsAppViewerDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'chats';
+
+let db = null;
+
+function openDatabase() {
+    return new Promise((resolve, reject) => {
+        if (db) {
+            resolve(db);
+            return;
+        }
+
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => {
+            console.error('IndexedDB error:', request.error);
+            reject(request.error);
+        };
+
+        request.onsuccess = () => {
+            db = request.result;
+            resolve(db);
+        };
+
+        request.onupgradeneeded = (event) => {
+            const database = event.target.result;
+            if (!database.objectStoreNames.contains(STORE_NAME)) {
+                database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            }
+        };
+    });
+}
+
+async function saveChatsToIndexedDB(chats) {
+    try {
+        const database = await openDatabase();
+        const transaction = database.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+
+        // Clear existing and add all chats
+        store.clear();
+
+        for (const chat of chats) {
+            store.put(chat);
+        }
+
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = resolve;
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } catch (e) {
+        console.error('IndexedDB save error:', e);
+        throw e;
+    }
+}
+
+async function loadChatsFromIndexedDB() {
+    try {
+        const database = await openDatabase();
+        const transaction = database.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.getAll();
+
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error('IndexedDB load error:', e);
+        return [];
+    }
+}
+
+// Save settings to localStorage (small data)
+function saveSettingsToStorage() {
+    try {
+        localStorage.setItem('wa_viewer_settings_v4', JSON.stringify({
+            activeChatId: state.activeChatId,
+            isDarkTheme: state.isDarkTheme,
+            reactions: state.reactions,
+        }));
+    } catch (e) {
+        console.error('Settings save error:', e);
+    }
+}
+
+// Load settings from localStorage
+function loadSettingsFromStorage() {
+    try {
+        const data = localStorage.getItem('wa_viewer_settings_v4');
+        if (data) {
+            const parsed = JSON.parse(data);
+            state.activeChatId = parsed.activeChatId || null;
+            state.isDarkTheme = parsed.isDarkTheme !== false;
+            state.reactions = parsed.reactions || {};
+        }
+    } catch (e) {
+        console.error('Settings load error:', e);
+    }
+}
+
+// Combined load function
+async function loadFromStorage() {
+    // Load settings first (sync)
+    loadSettingsFromStorage();
+
+    // Try to load chats from IndexedDB first
+    try {
+        const chats = await loadChatsFromIndexedDB();
+        if (chats && chats.length > 0) {
+            state.chats = chats;
+            return;
+        }
+    } catch (e) {
+        console.warn('IndexedDB load failed, trying localStorage:', e);
+    }
+
+    // Fallback: try loading from old localStorage format
     try {
         const data = localStorage.getItem('wa_viewer_data_v4');
         if (data) {
@@ -181,19 +314,35 @@ function loadFromStorage() {
             state.activeChatId = parsed.activeChatId || null;
             state.isDarkTheme = parsed.isDarkTheme !== false;
             state.reactions = parsed.reactions || {};
+
+            // Migrate to new format
+            if (state.chats.length > 0) {
+                saveToStorage();
+                // Clear old data after migration
+                localStorage.removeItem('wa_viewer_data_v4');
+            }
         }
     } catch (e) {
-        console.error('Storage error:', e);
+        console.error('Legacy storage load error:', e);
     }
 }
 
-function saveToStorage() {
-    localStorage.setItem('wa_viewer_data_v4', JSON.stringify({
-        chats: state.chats,
-        activeChatId: state.activeChatId,
-        isDarkTheme: state.isDarkTheme,
-        reactions: state.reactions,
-    }));
+// Combined save function
+async function saveToStorage() {
+    // Save settings to localStorage
+    saveSettingsToStorage();
+
+    // Save chats to IndexedDB
+    try {
+        await saveChatsToIndexedDB(state.chats);
+    } catch (e) {
+        console.error('Failed to save chats to IndexedDB:', e);
+
+        // Show user-friendly error for quota issues
+        if (e.name === 'QuotaExceededError') {
+            alert('Storage limit reached! Try clearing some old chats or use a different browser.');
+        }
+    }
 }
 
 // =============================================
@@ -683,9 +832,9 @@ function renderChatList(searchQuery = '') {
         const displayName = getChatDisplayName(chat);
 
         return `
-            <div class="user ${isActive ? 'selected' : ''}" onclick="handleChatClick('${chat.id}')">
+            <div class="user user-container ${isActive ? 'selected' : ''}" data-chat-id="${chat.id}" onclick="handleChatClick('${chat.id}')">
                 <div class="pfp">
-                    <img src="${chat.avatar || './img/icons8-account-96.png'}" alt="">
+                    <img src="${chat.customAvatar || chat.avatar || './img/icons8-account-96.png'}" alt="">
                 </div>
                 <div class="userinfo">
                     <div class="name">
@@ -736,9 +885,9 @@ function renderMobileChatList(searchQuery = '') {
         const displayName = getChatDisplayName(chat);
 
         return `
-            <div class="mobile-chat-item" onclick="handleMobileChatClick('${chat.id}')">
+            <div class="mobile-chat-item user-container" data-chat-id="${chat.id}" onclick="handleMobileChatClick('${chat.id}')">
                 <div class="avatar">
-                    <img src="${chat.avatar || './img/icons8-account-96.png'}" alt="">
+                    <img src="${chat.customAvatar || chat.avatar || './img/icons8-account-96.png'}" alt="">
                 </div>
                 <div class="chat-info">
                     <div class="chat-name">${escapeHtml(displayName)}</div>
@@ -1214,11 +1363,24 @@ function insertEmoji(emoji) {
 function toggleSidebarEditMode() {
     state.sidebarEditMode = !state.sidebarEditMode;
     document.querySelector('.contacts').classList.toggle('edit-mode-active', state.sidebarEditMode);
+    if (dom.sidebarEditToggle) {
+        dom.sidebarEditToggle.classList.toggle('active', state.sidebarEditMode);
+    }
 }
 
 function toggleChatEditMode() {
     state.chatEditMode = !state.chatEditMode;
     document.querySelector('.conversation').classList.toggle('edit-mode-active', state.chatEditMode);
+    if (dom.chatEditToggle) {
+        dom.chatEditToggle.classList.toggle('active', state.chatEditMode);
+    }
+    // Clear selection when exiting edit mode
+    if (!state.chatEditMode) {
+        state.selectedMsgId = null;
+        document.querySelectorAll('.sender.selected, .reciver.selected').forEach(el => {
+            el.classList.remove('selected');
+        });
+    }
 }
 
 // =============================================
@@ -1570,16 +1732,45 @@ function bindEditModeEvents() {
         dom.userEditorSaveBtn.addEventListener('click', saveUserFromEditor);
     }
 
-    // Header editing in edit mode
+    // Avatar file upload handler
+    if (dom.userEditorAvatarFile) {
+        dom.userEditorAvatarFile.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
+                    if (dom.userAvatarPreview) {
+                        dom.userAvatarPreview.src = dataUrl;
+                        dom.userAvatarPreview.style.display = 'block';
+                    }
+                    // Store the data URL temporarily
+                    state.pendingAvatarDataUrl = dataUrl;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+
+    // Header editing in edit mode - click on profile info area opens user editor
+    const profileInfo = document.querySelector('.profileInformation');
+    if (profileInfo) {
+        profileInfo.addEventListener('click', () => {
+            if (state.chatEditMode && state.activeChatId) {
+                openUserEditor();
+            }
+        });
+    }
+
     if (dom.chatHeaderName) {
         dom.chatHeaderName.addEventListener('click', () => {
-            if (state.chatEditMode) openUserEditor();
+            if (state.chatEditMode && state.activeChatId) openUserEditor();
         });
     }
 
     if (dom.chatHeaderStatus) {
         dom.chatHeaderStatus.addEventListener('click', () => {
-            if (state.chatEditMode) openUserEditor();
+            if (state.chatEditMode && state.activeChatId) openUserEditor();
         });
     }
 
@@ -1588,6 +1779,28 @@ function bindEditModeEvents() {
         dom.mobileBackBtn.addEventListener('click', () => {
             if (dom.mobileChatScreen) dom.mobileChatScreen.classList.add('hidden');
             if (dom.mobileListScreen) dom.mobileListScreen.classList.remove('hidden');
+        });
+    }
+
+    // Help button events
+    if (dom.helpBtnDesktop) {
+        dom.helpBtnDesktop.addEventListener('click', openHelpModal);
+    }
+
+    if (dom.helpBtnMobile) {
+        dom.helpBtnMobile.addEventListener('click', openHelpModal);
+    }
+
+    if (dom.helpCloseBtn) {
+        dom.helpCloseBtn.addEventListener('click', closeHelpModal);
+    }
+
+    // Close help modal when clicking outside
+    if (dom.helpModal) {
+        dom.helpModal.addEventListener('click', (e) => {
+            if (e.target === dom.helpModal) {
+                closeHelpModal();
+            }
         });
     }
 
@@ -1623,14 +1836,19 @@ function bindEditModeEvents() {
         }
     });
 
-    // User container click in sidebar edit mode
+    // User container click in sidebar edit mode - store which chat was clicked
     document.addEventListener('click', (e) => {
         if (!state.sidebarEditMode) return;
         const userContainer = e.target.closest('.user-container');
-        if (userContainer) {
+        if (userContainer && userContainer.dataset.chatId) {
             e.preventDefault();
             e.stopPropagation();
-            openUserEditor();
+            // Set active chat to the clicked one before opening editor
+            const clickedChatId = userContainer.dataset.chatId;
+            if (clickedChatId) {
+                state.activeChatId = clickedChatId;
+                openUserEditor();
+            }
         }
     });
 }
@@ -1639,6 +1857,15 @@ function bindEditModeEvents() {
 // MESSAGE SELECTION
 // =============================================
 function selectMessage(msgId) {
+    // If clicking the same message, deselect it
+    if (state.selectedMsgId === msgId) {
+        state.selectedMsgId = null;
+        document.querySelectorAll('.sender.selected, .reciver.selected').forEach(el => {
+            el.classList.remove('selected');
+        });
+        return;
+    }
+
     state.selectedMsgId = msgId;
 
     // Remove previous selection
@@ -1850,6 +2077,19 @@ function openUserEditor() {
     // Avatar URL if custom
     dom.userEditorAvatar.value = chat.customAvatar || '';
 
+    // Reset file input and preview
+    if (dom.userEditorAvatarFile) dom.userEditorAvatarFile.value = '';
+    if (dom.userAvatarPreview) {
+        if (chat.customAvatar) {
+            dom.userAvatarPreview.src = chat.customAvatar;
+            dom.userAvatarPreview.style.display = 'block';
+        } else {
+            dom.userAvatarPreview.src = '';
+            dom.userAvatarPreview.style.display = 'none';
+        }
+    }
+    state.pendingAvatarDataUrl = null;
+
     // Show modal
     dom.userEditorModal.classList.remove('hidden');
     dom.userEditorName.focus();
@@ -1857,6 +2097,7 @@ function openUserEditor() {
 
 function closeUserEditor() {
     dom.userEditorModal.classList.add('hidden');
+    state.pendingAvatarDataUrl = null;
 }
 
 function saveUserFromEditor() {
@@ -1865,7 +2106,7 @@ function saveUserFromEditor() {
 
     const newName = dom.userEditorName.value.trim();
     const newLastMsg = dom.userEditorLastMsg.value.trim();
-    const newAvatar = dom.userEditorAvatar.value.trim();
+    const newAvatarUrl = dom.userEditorAvatar.value.trim();
 
     if (newName) {
         chat.name = newName;
@@ -1879,9 +2120,11 @@ function saveUserFromEditor() {
         }
     }
 
-    // Update avatar if provided
-    if (newAvatar) {
-        chat.customAvatar = newAvatar;
+    // Update avatar - prioritize file upload over URL
+    if (state.pendingAvatarDataUrl) {
+        chat.customAvatar = state.pendingAvatarDataUrl;
+    } else if (newAvatarUrl) {
+        chat.customAvatar = newAvatarUrl;
     }
 
     saveToStorage();
@@ -1889,6 +2132,12 @@ function saveUserFromEditor() {
     // Update displays
     if (dom.chatHeaderName) dom.chatHeaderName.textContent = chat.name;
     if (dom.mobileChatName) dom.mobileChatName.textContent = chat.name;
+
+    // Update avatar in header
+    if (chat.customAvatar) {
+        if (dom.chatHeaderImg) dom.chatHeaderImg.src = chat.customAvatar;
+        if (dom.mobileChatAvatar) dom.mobileChatAvatar.src = chat.customAvatar;
+    }
 
     renderChatList();
     renderMobileChatList();
@@ -1952,6 +2201,21 @@ function switchMobileTab(tabName) {
         case 'calls':
             dom.mobileCallsScreen?.classList.remove('hidden');
             break;
+    }
+}
+
+// =============================================
+// HELP MODAL
+// =============================================
+function openHelpModal() {
+    if (dom.helpModal) {
+        dom.helpModal.classList.remove('hidden');
+    }
+}
+
+function closeHelpModal() {
+    if (dom.helpModal) {
+        dom.helpModal.classList.add('hidden');
     }
 }
 
